@@ -1,10 +1,12 @@
 package com.twitter.elephantbird.mapreduce.io;
 
 import com.twitter.elephantbird.thrift.ThriftBinaryDeserializer;
+import com.twitter.elephantbird.thrift.ThriftCompactDeserializer;
 import org.apache.thrift.TBase;
 import org.apache.thrift.TDeserializer;
 import org.apache.thrift.TException;
 import org.apache.thrift.TSerializer;
+import org.apache.thrift.protocol.TCompactProtocol;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +32,24 @@ public class ThriftConverter<M extends TBase<?, ?>> implements BinaryConverter<M
     }
   }
 
+  public enum ThriftProtocols {
+    TCOMPACTPROTOCOL {
+      @Override
+      public String toString() {
+        return "TCOMPACTPROTOCOL";
+      }
+    } ,
+
+    TBINARYPROTOCOL {
+      @Override
+      public String toString() {
+        return "TBINARYPROTOCOL";
+      }
+    }
+  }
+
+  private ThriftProtocols protocol = null;
+
   /**
    * Returns a ThriftConverter for a given Thrift class.
    */
@@ -41,14 +61,35 @@ public class ThriftConverter<M extends TBase<?, ?>> implements BinaryConverter<M
     return new ThriftConverter<M>(typeRef);
   }
 
+  public static <M extends TBase<?, ?>> ThriftConverter<M> newInstance(Class<M> tClass, ThriftProtocols thriftProtocols) {
+    return new ThriftConverter<M>(new TypeRef<M>(tClass){}, thriftProtocols);
+  }
+
+  public static <M extends TBase<?, ?>> ThriftConverter<M> newInstance(TypeRef<M> typeRef, ThriftProtocols thriftProtocols) {
+    return new ThriftConverter<M>(typeRef, thriftProtocols);
+  }
+
   public ThriftConverter(TypeRef<M> typeRef) {
+    this(typeRef, ThriftProtocols.TBINARYPROTOCOL);
+  }
+
+  public ThriftConverter(TypeRef<M> typeRef, ThriftProtocols thriftProtocols) {
     this.typeRef = typeRef;
+
+    switch (thriftProtocols) {
+      case TBINARYPROTOCOL:
+        deserializer = new ThriftBinaryDeserializer();
+        break;
+      case TCOMPACTPROTOCOL:
+        deserializer = new ThriftCompactDeserializer();
+        break;
+      default:
+        throw new UnsupportedOperationException("Protocol " + thriftProtocols + " not yet supported");
+    }
   }
 
   @Override
   public M fromBytes(byte[] messageBuffer) {
-    if (deserializer == null)
-      deserializer = new ThriftBinaryDeserializer();
     try {
       M message = typeRef.safeNewInstance();
       deserializer.deserialize(message, messageBuffer);
@@ -63,8 +104,14 @@ public class ThriftConverter<M extends TBase<?, ?>> implements BinaryConverter<M
 
   @Override
   public byte[] toBytes(M message) {
-    if (serializer == null)
-      serializer = new TSerializer();
+    if (serializer == null) {
+      if (deserializer instanceof ThriftCompactDeserializer) {
+        serializer = new TSerializer(new TCompactProtocol.Factory());
+      } else {
+        serializer = new TSerializer();
+      }
+    }
+
     try {
       return serializer.serialize(message);
     } catch (TException e) {

@@ -38,6 +38,12 @@ public class ThriftBytesToTuple<M extends TBase<?,?>> extends EvalFunc<Tuple> {
     thriftToPig = ThriftToPig.newInstance(typeRef);
   }
 
+  public ThriftBytesToTuple(String thriftClassName, String thriftProtocols) {
+    typeRef = PigUtil.getThriftTypeRef(thriftClassName);
+    thriftConverter = ThriftConverter.newInstance(typeRef, ThriftConverter.ThriftProtocols.valueOf(thriftProtocols));
+    thriftToPig = ThriftToPig.newInstance(typeRef);
+  }
+
   @Override
   public Tuple exec(Tuple input) throws IOException {
     if (input == null || input.size() < 1) return null;
